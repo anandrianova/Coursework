@@ -1,0 +1,135 @@
+@model SportCoursework.Models.AppUser
+@{ Layout = "_Layout"; }
+
+<div class="container py-4">
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm p-4 border-0" style="border-radius: 15px; background: #f8f9fa;">
+                <h5 class="fw-bold">@Model.UserName</h5>
+                <p class="badge bg-primary">@Model.SportType</p>
+                
+                <div class="bg-white p-3 rounded shadow-sm mb-3">
+                    <small class="text-muted">Мой ИМТ:</small>
+                    <h4 class="fw-bold mb-0 @(ViewBag.BMI > 25 ? "text-danger" : "text-success")">@ViewBag.BMI</h4>
+                </div>
+
+                <form action="/Home/AddTraining" method="post" class="mt-4">
+                    <h6 class="fw-bold mb-3">Добавить тренировку</h6>
+                    <div class="mb-2">
+                        <label class="small fw-bold">Вес (кг)</label>
+                        <input name="weightAtTraining" type="number" step="0.1" class="form-control form-control-sm" value="@Model.Weight" required />
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold">Время (мин)</label>
+                        <input name="timeMinutes" type="number" step="0.1" class="form-control form-control-sm" required />
+                    </div>
+                    
+                    @* Поля меняются в зависимости от того, какой спорт у юзера *@
+                    @if (Model.SportType == "Running" || Model.SportType == "Swimming")
+                    {
+                        <div class="mb-3">
+                            <label class="small fw-bold">Расстояние (км)</label>
+                            <input name="distance" type="number" step="0.1" class="form-control form-control-sm" required />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <label class="small fw-bold">Кол-во повторов</label>
+                            <input name="actionsCount" type="number" class="form-control form-control-sm" required />
+                        </div>
+                    }
+                    <button type="submit" class="btn btn-dark w-100 fw-bold">Добавить</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm p-4 border-0 mb-4" style="border-radius: 15px;">
+                <h5 class="fw-bold">Статистика прогресса</h5>
+                <div style="height: 250px;"><canvas id="effChart"></canvas></div>
+                <hr>
+                <div style="height: 150px;"><canvas id="weightChart"></canvas></div>
+            </div>
+
+            <div class="card shadow-sm p-4 border-0" style="border-radius: 15px;">
+                <h6 class="fw-bold mb-3">История занятий</h6>
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr class="text-muted small">
+                            <th>Дата</th>
+                            <th>Вес</th>
+                            <th>Итог</th>
+                            <th>Тренд</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @* Сортируем: свежие сверху *@
+                        @{ var list = Model.Trainings.OrderByDescending(t => t.Date).ToList(); }
+                        @for (int i = 0; i < list.Count; i++)
+                        {
+                            var t = list[i];
+                            // Считаем разницу с прошлой тренировкой (она следующая в списке)
+                            double? diff = (i + 1 < list.Count) ? t.GetEfficiency(Model.SportType) - list[i+1].GetEfficiency(Model.SportType) : null;
+                            <tr>
+                                <td class="small">@t.Date.ToString("dd.MM")</td>
+                                <td><span class="badge bg-light text-dark">@t.WeightAtTraining кг</span></td>
+                                <td class="fw-bold">@t.GetEfficiency(Model.SportType)</td>
+                                <td>
+                                    @* Рисуем стрелочки: вверх - рост, вниз - спад *@
+                                    @if (diff > 0) { <span class="text-success small">▲ +@Math.Round(diff.Value, 1)</span> }
+                                    else if (diff < 0) { <span class="text-danger small">▼ @Math.Round(diff.Value, 1)</span> }
+                                    else { <span class="text-muted small">▬</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* Скрипты для отрисовки графиков *@
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Прокидываем данные из C# в JS
+        const dates = @Html.Raw(Json.Serialize(ViewBag.Dates));
+        const effValues = @Html.Raw(Json.Serialize(ViewBag.Values));
+        const weightValues = @Html.Raw(Json.Serialize(ViewBag.Weights ?? new double[0]));
+
+        // Конфиг синего графика (Эффективность)
+        new Chart(document.getElementById('effChart'), {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: 'Эффективность',
+                    data: effValues,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        // Конфиг желтого графика (Вес)
+        new Chart(document.getElementById('weightChart'), {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: 'Динамика веса',
+                    data: weightValues,
+                    borderColor: '#ffc107',
+                    borderDash: [5, 5],
+                    tension: 0.1
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    });
+</script>
